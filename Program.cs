@@ -31,6 +31,20 @@ namespace PokerGame
     Joker
   }
 
+  enum HandRank
+  {
+    HighCard,
+    OnePair,
+    TwoPair,
+    ThreeOfAKind,
+    Straight,
+    Flush,
+    FullHouse,
+    FourOfAKind,
+    StraightFlush,
+    RoyalFlush
+  }
+
   struct Card
   {
     public Suit Suit;
@@ -196,6 +210,11 @@ namespace PokerGame
 
     static string GetCardString(Card card)
     {
+      if (card.Rank == Rank.Joker)
+      {
+        return "Joker";
+      }
+
       string rankString;
       switch (card.Rank)
       {
@@ -210,9 +229,6 @@ namespace PokerGame
           break;
         case Rank.King:
           rankString = "K";
-          break;
-        case Rank.Joker:
-          rankString = "";
           break;
         default:
           rankString = ((int)card.Rank).ToString();
@@ -298,18 +314,10 @@ namespace PokerGame
       var rankGroups = hand.GroupBy(card => card.Rank);
 
       // ペアの数を数える
-      int pairCount = 0;
-
-      foreach (var group in rankGroups)
-      {
-        if (group.Count() >= 2)
-        {
-          pairCount++;
-        }
-      }
+      int pairCount = rankGroups.Count(group => group.Count() >= 2);
 
       // ワイルドカードを使用してツーペアの役が存在するかどうかを判定
-      return pairCount >= 2 || (pairCount == 1 && wildCardCount == 1);
+      return pairCount >= 2 || (pairCount == 1 && wildCardCount >= 1);
     }
 
     static bool HasOnePair(List<Card> hand, int wildCardCount)
@@ -318,17 +326,8 @@ namespace PokerGame
       var rankGroups = hand.GroupBy(card => card.Rank);
 
       // ワイルドカードを使用してペアの役が存在するかどうかを判定
-      foreach (var group in rankGroups)
-      {
-        if (group.Count() + wildCardCount >= 2)
-        {
-          return true;
-        }
-      }
-
-      return false;
+      return rankGroups.Any(group => group.Count() + wildCardCount >= 2);
     }
-
 
     static bool HasRoyalFlush(List<Card> hand, int wildCardCount)
     {
@@ -342,15 +341,7 @@ namespace PokerGame
       Rank[] royalFlushRanks = { Rank.Ten, Rank.Jack, Rank.Queen, Rank.King, Rank.Ace };
 
       // ワイルドカードを使用してロイヤルフラッシュの役が存在するかどうかを判定
-      foreach (var ranks in rankArrays)
-      {
-        if (ranks.Length + wildCardCount >= 5 && royalFlushRanks.All(rank => ranks.Contains(rank) || wildCardCount > 0))
-        {
-          return true;
-        }
-      }
-
-      return false;
+      return rankArrays.Any(ranks => ranks.Length + wildCardCount >= 5 && royalFlushRanks.All(rank => ranks.Contains(rank) || wildCardCount > 0));
     }
 
     static bool HasStraightFlush(List<Card> hand, int wildCardCount)
@@ -362,15 +353,7 @@ namespace PokerGame
       var rankArrays = suitGroups.Select(group => group.Select(card => card.Rank).ToArray()).ToList();
 
       // ワイルドカードを使用してストレートフラッシュの役が存在するかどうかを判定
-      foreach (var ranks in rankArrays)
-      {
-        if (ranks.Length + wildCardCount >= 5 && IsStraight(ranks, wildCardCount))
-        {
-          return true;
-        }
-      }
-
-      return false;
+      return rankArrays.Any(ranks => ranks.Length + wildCardCount >= 5 && IsStraight(ranks, wildCardCount));
     }
 
     static bool IsStraight(Rank[] ranks, int wildCardCount)
@@ -402,41 +385,44 @@ namespace PokerGame
       var suitGroups = hand.GroupBy(card => card.Suit);
 
       // ワイルドカードを使用してフラッシュの役が存在するかどうかを判定
-      foreach (var group in suitGroups)
-      {
-        int groupCount = group.Count();
-        if (groupCount >= 5 || (groupCount + wildCardCount >= 5))
-        {
-          return true;
-        }
-      }
-
-      return false;
+      return suitGroups.Any(group => group.Count() >= 5 || (group.Count() + wildCardCount >= 5));
     }
-
 
     static bool HasStraight(List<Card> hand, int wildCardCount)
     {
       var ranks = hand.Select(card => card.Rank).Distinct().ToList();
       ranks.Sort();
 
+      // ストレートの役が存在するかどうかを判定
+      int consecutiveCount = 0;
+
       for (int i = 0; i < ranks.Count - 1; i++)
       {
-        if (ranks[i] + 1 != ranks[i + 1])
+        if (ranks[i] + 1 == ranks[i + 1])
+        {
+          consecutiveCount++;
+        }
+        else if (ranks[i] != ranks[i + 1])
         {
           int gap = ranks[i + 1] - ranks[i] - 1;
           if (gap > wildCardCount)
           {
-            return false;
+            consecutiveCount = 0;
           }
           else
           {
+            consecutiveCount += gap;
             wildCardCount -= gap;
           }
         }
+
+        if (consecutiveCount + wildCardCount >= 4)
+        {
+          return true;
+        }
       }
 
-      return true;
+      return false;
     }
 
 
@@ -446,15 +432,7 @@ namespace PokerGame
       var rankGroups = hand.GroupBy(card => card.Rank);
 
       // ワイルドカードを使用してフォーカードの役が存在するかどうかを判定
-      foreach (var group in rankGroups)
-      {
-        if (group.Count() + wildCardCount >= 4)
-        {
-          return true;
-        }
-      }
-
-      return false;
+      return rankGroups.Any(group => group.Count() + wildCardCount >= 4);
     }
 
     static bool HasFullHouse(List<Card> hand, int wildCardCount)
@@ -462,21 +440,8 @@ namespace PokerGame
       // ランクごとにカードをグループ化
       var rankGroups = hand.GroupBy(card => card.Rank);
 
-      int threeOfAKindCount = 0;
-      int pairCount = 0;
-
-      foreach (var group in rankGroups)
-      {
-        int groupCount = group.Count();
-        if (groupCount >= 3)
-        {
-          threeOfAKindCount++;
-        }
-        else if (groupCount >= 2)
-        {
-          pairCount++;
-        }
-      }
+      int threeOfAKindCount = rankGroups.Count(group => group.Count() >= 3);
+      int pairCount = rankGroups.Count(group => group.Count() >= 2);
 
       // ワイルドカードの利用回数を考慮してフルハウスの判定を行う
       if (threeOfAKindCount >= 1 && pairCount >= 1)
@@ -495,40 +460,13 @@ namespace PokerGame
       return false;
     }
 
-
-
     static bool HasThreeOfAKind(List<Card> hand, int wildCardCount)
     {
       // ランクごとにカードをグループ化
       var rankGroups = hand.GroupBy(card => card.Rank);
 
       // ワイルドカードを使用してスリーカードの役が存在するかどうかを判定
-      foreach (var group in rankGroups)
-      {
-        if (group.Count() + wildCardCount >= 3)
-        {
-          return true;
-        }
-      }
-
-      return false;
+      return rankGroups.Any(group => group.Count() + wildCardCount >= 3);
     }
-
-
-
-  }
-
-  enum HandRank
-  {
-    HighCard,
-    OnePair,
-    TwoPair,
-    ThreeOfAKind,
-    Straight,
-    Flush,
-    FullHouse,
-    FourOfAKind,
-    StraightFlush,
-    RoyalFlush
   }
 }
